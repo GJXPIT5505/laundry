@@ -1,13 +1,10 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 
-export type Env = {
-  // Bindings removed since we are proxying Google Sheets now
-}
+export type Env = {}
 
 const app = new Hono<{ Bindings: Env }>()
 
-// Enable CORS
 app.use('/api/*', cors({ origin: '*', credentials: true }))
 
 app.get('/', (c) => {
@@ -21,7 +18,6 @@ async function fetchSheetData(sheetName: string, range: string) {
   const response = await fetch(url);
   const text = await response.text();
   
-  // Extract JSON from the JSONP response
   const jsonStart = text.indexOf('{');
   const jsonEnd = text.lastIndexOf('}') + 1;
   const jsonString = text.substring(jsonStart, jsonEnd);
@@ -30,41 +26,35 @@ async function fetchSheetData(sheetName: string, range: string) {
   return data.table.rows;
 }
 
-function parseRow(row: any, index: number) {
-  // Columns: C=0 (RFID), D=1 (Nama), E=2 (Kelas) because of range=C5:E
-  const rfid = row.c[0]?.v || '';
-  const nama = row.c[1]?.v || '';
-  const kelas = row.c[2]?.v || '';
-  
-  // Simulate status based on odd/even rows (0-indexed, so we add 1 for 1-based logic)
-  const isOdd = (index + 1) % 2 !== 0;
-  const status = isOdd ? 'Diproses' : 'Selesai';
-  
-  // Simulate timestamp (last 24 hours randomly or just now for simplicity)
-  // The user requested timestamp when fetched, but for charts to work, maybe slightly distributed?
-  // User: "Waktu tap tidak tersedia di sheet saat ini, gunakan timestamp saat data diambil sebagai simulasi"
-  // Let's create a timestamp based on the index so it looks realistic, minus some minutes.
-  const time = new Date(Date.now() - index * 60000 * 15).toISOString(); // each older row is 15 mins older
-
-  return { rfid, nama, kelas, status, time };
-}
-
 app.get('/api/sheets/log', async (c) => {
   try {
     const rows = await fetchSheetData('Data Siswa', 'C5:E');
-    // "Data mulai baris 5" -> rows[4] onwards. But sometimes gviz omits empty top rows.
-    // Let's filter out rows that don't have RFID/Nama.
-    const validRows = rows.map((r: any, idx: number) => parseRow(r, idx)).filter((r: any) => r.rfid !== '' && r.nama !== '');
     
-    // Sort so newest is at the top (index 0 is newest if we assume latest append)
-    // Actually, gviz returns them in top-to-bottom order. The newest log is usually at the bottom.
-    // So we should reverse it to put the newest at the top.
-    const reversed = validRows.reverse();
+    // Filter valid rows
+    const validRows = rows.filter((r: any) => r.c[0]?.v && r.c[1]?.v);
     
-    // Recalculate timestamps so the top ones are the newest
+    // Calculate status sequentially: odd tap = Diproses, even tap = Selesai
+    const tapCounts: Record<string, number> = {};
+    const processedLogs = validRows.map((r: any, index: number) => {
+      const rfid = r.c[0]?.v || '';
+      const nama = r.c[1]?.v || '';
+      const kelas = r.c[2]?.v || '';
+      
+      tapCounts[rfid] = (tapCounts[rfid] || 0) + 1;
+      const isOdd = tapCounts[rfid] % 2 !== 0;
+      const status = isOdd ? 'Diproses' : 'Selesai';
+      
+      return { rfid, nama, kelas, status };
+    });
+    
+    // Reverse to put newest at the top
+    const reversed = processedLogs.reverse();
+    
+    // Assign simulated timestamps so the top is the newest
+    // 5 seconds apart to simulate real-time tapping log
     const finalData = reversed.map((r: any, idx: number) => ({
       ...r,
-      time: new Date(Date.now() - idx * 60000 * 5).toISOString() // 5 minutes apart
+      time: new Date(Date.now() - idx * 5000).toISOString() 
     }));
 
     return c.json(finalData);
@@ -76,10 +66,14 @@ app.get('/api/sheets/log', async (c) => {
 app.get('/api/sheets/master', async (c) => {
   try {
     const rows = await fetchSheetData('Master Siswa', 'C5:E');
-    // Filter out rows without data
-    const validRows = rows.map((r: any, idx: number) => parseRow(r, idx)).filter((r: any) => r.rfid !== '' && r.nama !== '');
+    const validRows = rows
+      .filter((r: any) => r.c[0]?.v && r.c[1]?.v)
+      .map((row: any) => ({
+        rfid: row.c[0]?.v || '',
+        nama: row.c[1]?.v || '',
+        kelas: row.c[2]?.v || ''
+      }));
     
-    // For master, maybe we just want to list them.
     return c.json(validRows);
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
