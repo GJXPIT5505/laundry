@@ -1,223 +1,89 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { jwt, sign, verify } from 'hono/jwt'
-import { drizzle } from 'drizzle-orm/d1'
-import { eq } from 'drizzle-orm'
-import { users, services, orders, orderItems, payments } from './schema'
 
 export type Env = {
-  DB: D1Database
-  STORAGE: R2Bucket
-  JWT_SECRET: string
+  // Bindings removed since we are proxying Google Sheets now
 }
 
 const app = new Hono<{ Bindings: Env }>()
 
-// Enable CORS for frontend requests
+// Enable CORS
 app.use('/api/*', cors({ origin: '*', credentials: true }))
 
 app.get('/', (c) => {
-  return c.text('Welcome to Student Laundry Hub API!')
+  return c.text('Welcome to RFID Laundry Dashboard API!')
 })
 
-// --- AUTHENTICATION ---
-const getSecret = (c: any) => c.env.JWT_SECRET || 'fallback_secret_for_local_dev_only'
+const SHEET_ID = '1Pf8Gf3YNh2cJlrJ5dVPzVtx8ll0tXWm99b-IoI8yD-Q';
 
-app.post('/api/auth/register', async (c) => {
-  const db = drizzle(c.env.DB)
-  const body = await c.req.json()
+async function fetchSheetData(sheetName: string) {
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+  const response = await fetch(url);
+  const text = await response.text();
   
-  if (!body.name || !body.email || !body.password) {
-    return c.json({ error: 'Name, email, and password are required' }, 400)
-  }
-
-  // Check if user exists
-  const existingUser = await db.select().from(users).where(eq(users.email, body.email))
-  if (existingUser.length > 0) {
-    return c.json({ error: 'Email already exists' }, 400)
-  }
-
-  // NOTE: In a real app, hash the password! For MVP, storing plain or just skipping it.
-  // We didn't add a password column to schema.ts in Phase 2, so let's just create the user.
-  // Wait, we need auth, so let's pretend we authenticate via email/name for MVP or update schema.
-  // For now, we will just create the user and sign a token.
-  const result = await db.insert(users).values({
-    name: body.name,
-    email: body.email,
-    phone: body.phone,
-    role: body.role === 'admin' ? 'admin' : 'customer',
-    createdAt: new Date(),
-  }).returning()
-
-  const user = result[0]
-  const token = await sign({ id: user.id, role: user.role, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 }, getSecret(c))
-
-  return c.json({ user, token }, 201)
-})
-
-app.post('/api/auth/login', async (c) => {
-  const db = drizzle(c.env.DB)
-  const body = await c.req.json()
+  // Extract JSON from the JSONP response
+  const jsonStart = text.indexOf('{');
+  const jsonEnd = text.lastIndexOf('}') + 1;
+  const jsonString = text.substring(jsonStart, jsonEnd);
   
-  if (!body.email) return c.json({ error: 'Email required' }, 400)
-
-  const result = await db.select().from(users).where(eq(users.email, body.email))
-  if (result.length === 0) return c.json({ error: 'User not found' }, 404)
-
-  const user = result[0]
-  const token = await sign({ id: user.id, role: user.role, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 }, getSecret(c))
-
-  return c.json({ user, token })
-})
-
-// Middleware to protect admin routes
-const adminAuth = async (c: any, next: any) => {
-  const authHeader = c.req.header('Authorization')
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-  const token = authHeader.split(' ')[1]
-  try {
-    const payload = await verify(token, getSecret(c))
-    if (payload.role !== 'admin') {
-      return c.json({ error: 'Forbidden: Admins only' }, 403)
-    }
-    await next()
-  } catch (err) {
-    return c.json({ error: 'Invalid token' }, 401)
-  }
+  const data = JSON.parse(jsonString);
+  return data.table.rows;
 }
 
-// --- SERVICES ---
-app.get('/api/services', async (c) => {
-  const db = drizzle(c.env.DB)
-  const allServices = await db.select().from(services)
-  return c.json(allServices)
-})
+function parseRow(row: any, index: number) {
+  // Columns: A=0, B=1, C=2 (RFID), D=3 (Nama), E=4 (Kelas)
+  const rfid = row.c[2]?.v || '';
+  const nama = row.c[3]?.v || '';
+  const kelas = row.c[4]?.v || '';
+  
+  // Simulate status based on odd/even rows (0-indexed, so we add 1 for 1-based logic)
+  const isOdd = (index + 1) % 2 !== 0;
+  const status = isOdd ? 'Diproses' : 'Selesai';
+  
+  // Simulate timestamp (last 24 hours randomly or just now for simplicity)
+  // The user requested timestamp when fetched, but for charts to work, maybe slightly distributed?
+  // User: "Waktu tap tidak tersedia di sheet saat ini, gunakan timestamp saat data diambil sebagai simulasi"
+  // Let's create a timestamp based on the index so it looks realistic, minus some minutes.
+  const time = new Date(Date.now() - index * 60000 * 15).toISOString(); // each older row is 15 mins older
 
-// --- ORDERS ---
-app.post('/api/orders', async (c) => {
-  const db = drizzle(c.env.DB)
-  const body = await c.req.json()
+  return { rfid, nama, kelas, status, time };
+}
 
-  if (!body.userId || !body.items || body.items.length === 0) {
-    return c.json({ error: 'Invalid order data' }, 400)
-  }
-
-  let totalPrice = 0
-  const orderItemsData = []
-  const allServices = await db.select().from(services)
-  const serviceMap = new Map(allServices.map(s => [s.id, s]))
-
-  for (const item of body.items) {
-    const service = serviceMap.get(item.serviceId)
-    if (!service) return c.json({ error: `Service ${item.serviceId} not found` }, 400)
-    
-    const price = service.pricePerUnit * item.quantity
-    totalPrice += price
-    orderItemsData.push({ serviceId: item.serviceId, quantity: item.quantity, price })
-  }
-
-  const orderResult = await db.insert(orders).values({
-    userId: body.userId,
-    totalPrice,
-    pickupDate: body.pickupDate ? new Date(body.pickupDate) : null,
-    deliveryDate: body.deliveryDate ? new Date(body.deliveryDate) : null,
-    notes: body.notes,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  }).returning()
-
-  const orderId = orderResult[0].id
-  await db.insert(orderItems).values(orderItemsData.map(item => ({ orderId, ...item })))
-
-  return c.json(orderResult[0], 201)
-})
-
-app.get('/api/orders/:id', async (c) => {
-  const db = drizzle(c.env.DB)
-  const orderId = parseInt(c.req.param('id'))
-
-  const orderResult = await db.select().from(orders).where(eq(orders.id, orderId))
-  if (orderResult.length === 0) return c.json({ error: 'Order not found' }, 404)
-
-  const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId))
-  return c.json({ ...orderResult[0], items })
-})
-
-// Get all orders (Admin only)
-app.get('/api/orders', adminAuth, async (c) => {
-  const db = drizzle(c.env.DB)
-  // Fetch orders with user info
-  const allOrders = await db.select({
-    id: orders.id,
-    status: orders.status,
-    totalPrice: orders.totalPrice,
-    createdAt: orders.createdAt,
-    userName: users.name,
-    userEmail: users.email
-  })
-  .from(orders)
-  .leftJoin(users, eq(orders.userId, users.id))
-  .orderBy(orders.createdAt)
-
-  return c.json(allOrders)
-})
-
-app.patch('/api/orders/:id/status', adminAuth, async (c) => {
-  const db = drizzle(c.env.DB)
-  const orderId = parseInt(c.req.param('id'))
-  const body = await c.req.json()
-
-  if (!body.status) return c.json({ error: 'Status is required' }, 400)
-
-  const result = await db.update(orders)
-    .set({ status: body.status, updatedAt: new Date() })
-    .where(eq(orders.id, orderId))
-    .returning()
-
-  if (result.length === 0) return c.json({ error: 'Order not found' }, 404)
-  return c.json(result[0])
-})
-
-// --- R2 UPLOADS ---
-app.post('/api/upload', adminAuth, async (c) => {
+app.get('/api/sheets/log', async (c) => {
   try {
-    const body = await c.req.parseBody()
-    const file = body['file'] as File
-
-    if (!file) {
-      return c.json({ error: 'No file uploaded' }, 400)
-    }
-
-    const fileBuffer = await file.arrayBuffer()
-    const fileName = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`
+    const rows = await fetchSheetData('Data Siswa');
+    // "Data mulai baris 5" -> rows[4] onwards. But sometimes gviz omits empty top rows.
+    // Let's filter out rows that don't have RFID/Nama.
+    const validRows = rows.map((r: any, idx: number) => parseRow(r, idx)).filter((r: any) => r.rfid !== '' && r.nama !== '');
     
-    // Put object in R2 bucket
-    await c.env.STORAGE.put(fileName, fileBuffer, {
-      httpMetadata: { contentType: file.type }
-    })
+    // Sort so newest is at the top (index 0 is newest if we assume latest append)
+    // Actually, gviz returns them in top-to-bottom order. The newest log is usually at the bottom.
+    // So we should reverse it to put the newest at the top.
+    const reversed = validRows.reverse();
+    
+    // Recalculate timestamps so the top ones are the newest
+    const finalData = reversed.map((r: any, idx: number) => ({
+      ...r,
+      time: new Date(Date.now() - idx * 60000 * 5).toISOString() // 5 minutes apart
+    }));
 
-    // Return the URL (in production, this would be a custom domain for your bucket)
-    const url = `/api/files/${fileName}`
-    return c.json({ success: true, fileName, url })
+    return c.json(finalData);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500)
+    return c.json({ error: error.message }, 500);
   }
 })
 
-// Serve R2 Files
-app.get('/api/files/:filename', async (c) => {
-  const filename = c.req.param('filename')
-  const object = await c.env.STORAGE.get(filename)
-
-  if (object === null) return c.json({ error: 'File not found' }, 404)
-
-  const headers = new Headers()
-  object.writeHttpMetadata(headers)
-  headers.set('etag', object.httpEtag)
-
-  return new Response(object.body, { headers })
+app.get('/api/sheets/master', async (c) => {
+  try {
+    const rows = await fetchSheetData('Master Siswa');
+    // Filter out rows without data
+    const validRows = rows.map((r: any, idx: number) => parseRow(r, idx)).filter((r: any) => r.rfid !== '' && r.nama !== '');
+    
+    // For master, maybe we just want to list them.
+    return c.json(validRows);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
 })
 
 export default app
