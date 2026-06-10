@@ -53,7 +53,10 @@ export default function StatsPage() {
         setLoading(false);
       }
     };
+    
     fetchData();
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   // Data processing for charts

@@ -58,10 +58,10 @@ export default function DashboardPage() {
     // Initial fetch
     fetchData();
 
-    // Auto refresh every 30 seconds
+    // Auto refresh every 5 seconds for real-time feel
     const interval = setInterval(() => {
       fetchData(true);
-    }, 30000);
+    }, 5000);
 
     return () => clearInterval(interval);
   }, []);

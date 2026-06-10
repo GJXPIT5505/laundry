@@ -40,7 +40,10 @@ export default function MasterSiswaPage() {
         setLoading(false);
       }
     };
+    
     fetchData();
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const filteredStudents = students.filter(s => 
