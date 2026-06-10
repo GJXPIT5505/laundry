@@ -65,7 +65,7 @@ app.get('/api/sheets/log', async (c) => {
 
 app.get('/api/sheets/master', async (c) => {
   try {
-    const rows = await fetchSheetData('Master Siswa', 'C5:E');
+    const rows = await fetchSheetData('Master Siswa', 'B5:D');
     const validRows = rows
       .filter((r: any) => r.c[0]?.v && r.c[1]?.v)
       .map((row: any) => ({
