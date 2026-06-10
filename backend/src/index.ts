@@ -16,8 +16,8 @@ app.get('/', (c) => {
 
 const SHEET_ID = '1Pf8Gf3YNh2cJlrJ5dVPzVtx8ll0tXWm99b-IoI8yD-Q';
 
-async function fetchSheetData(sheetName: string) {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+async function fetchSheetData(sheetName: string, range: string) {
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&headers=0&range=${range}`;
   const response = await fetch(url);
   const text = await response.text();
   
@@ -31,10 +31,10 @@ async function fetchSheetData(sheetName: string) {
 }
 
 function parseRow(row: any, index: number) {
-  // Columns: A=0, B=1, C=2 (RFID), D=3 (Nama), E=4 (Kelas)
-  const rfid = row.c[2]?.v || '';
-  const nama = row.c[3]?.v || '';
-  const kelas = row.c[4]?.v || '';
+  // Columns: C=0 (RFID), D=1 (Nama), E=2 (Kelas) because of range=C5:E
+  const rfid = row.c[0]?.v || '';
+  const nama = row.c[1]?.v || '';
+  const kelas = row.c[2]?.v || '';
   
   // Simulate status based on odd/even rows (0-indexed, so we add 1 for 1-based logic)
   const isOdd = (index + 1) % 2 !== 0;
@@ -51,7 +51,7 @@ function parseRow(row: any, index: number) {
 
 app.get('/api/sheets/log', async (c) => {
   try {
-    const rows = await fetchSheetData('Data Siswa');
+    const rows = await fetchSheetData('Data Siswa', 'C5:E');
     // "Data mulai baris 5" -> rows[4] onwards. But sometimes gviz omits empty top rows.
     // Let's filter out rows that don't have RFID/Nama.
     const validRows = rows.map((r: any, idx: number) => parseRow(r, idx)).filter((r: any) => r.rfid !== '' && r.nama !== '');
@@ -75,7 +75,7 @@ app.get('/api/sheets/log', async (c) => {
 
 app.get('/api/sheets/master', async (c) => {
   try {
-    const rows = await fetchSheetData('Master Siswa');
+    const rows = await fetchSheetData('Master Siswa', 'C5:E');
     // Filter out rows without data
     const validRows = rows.map((r: any, idx: number) => parseRow(r, idx)).filter((r: any) => r.rfid !== '' && r.nama !== '');
     
