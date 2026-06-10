@@ -14,8 +14,8 @@ app.get('/', (c) => {
 const SHEET_ID = '1Pf8Gf3YNh2cJlrJ5dVPzVtx8ll0tXWm99b-IoI8yD-Q';
 
 async function fetchSheetData(sheetName: string, range: string) {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&headers=0&range=${range}`;
-  const response = await fetch(url);
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&headers=0&range=${range}&t=${Date.now()}`;
+  const response = await fetch(url, { headers: { 'Cache-Control': 'no-cache' } });
   const text = await response.text();
   
   const jsonStart = text.indexOf('{');
