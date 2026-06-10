@@ -4,11 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { Search, User } from 'lucide-react';
 
 type MasterData = { rfid: string; nama: string; kelas: string };
-type LogData = { rfid: string; status: string; time: string };
 
 export default function MasterSiswaPage() {
   const [students, setStudents] = useState<MasterData[]>([]);
-  const [logs, setLogs] = useState<LogData[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<MasterData | null>(null);
@@ -18,24 +16,16 @@ export default function MasterSiswaPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [masterRes, logRes] = await Promise.all([
-          fetch(`${API_BASE}/api/sheets/master`),
-          fetch(`${API_BASE}/api/sheets/log`)
-        ]);
+        const masterRes = await fetch(`${API_BASE}/api/sheets/master`);
         
-        if (masterRes.ok && logRes.ok) {
+        if (masterRes.ok) {
           const newMaster = await masterRes.json();
-          const newLogs = await logRes.json();
           setStudents(newMaster);
-          setLogs(newLogs);
           localStorage.setItem('laundry_master', JSON.stringify(newMaster));
-          localStorage.setItem('laundry_logs', JSON.stringify(newLogs));
         }
       } catch (error) {
         const cachedMaster = localStorage.getItem('laundry_master');
-        const cachedLogs = localStorage.getItem('laundry_logs');
         if (cachedMaster) setStudents(JSON.parse(cachedMaster));
-        if (cachedLogs) setLogs(JSON.parse(cachedLogs));
       } finally {
         setLoading(false);
       }
@@ -50,14 +40,6 @@ export default function MasterSiswaPage() {
     s.kelas.toLowerCase().includes(search.toLowerCase()) ||
     s.nama.toLowerCase().includes(search.toLowerCase())
   );
-
-  const getStudentStats = (rfid: string) => {
-    const studentLogs = logs.filter(l => l.rfid === rfid);
-    const totalLaundry = studentLogs.length;
-    // Since logs are reversed (newest top), the first one is the latest
-    const lastTap = studentLogs.length > 0 ? new Date(studentLogs[0].time).toLocaleString('id-ID') : 'Belum pernah';
-    return { totalLaundry, lastTap };
-  };
 
   return (
     <div className="space-y-6 relative">
@@ -90,17 +72,14 @@ export default function MasterSiswaPage() {
                 <th className="px-6 py-4 font-medium">RFID UID</th>
                 <th className="px-6 py-4 font-medium">Nama Siswa</th>
                 <th className="px-6 py-4 font-medium">Kelas</th>
-                <th className="px-6 py-4 font-medium text-center">Total Laundry</th>
-                <th className="px-6 py-4 font-medium">Terakhir Tap</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr><td colSpan={6} className="p-8 text-center text-slate-400">Memuat data siswa...</td></tr>
+              {loading && students.length === 0 ? (
+                <tr><td colSpan={4} className="p-8 text-center text-slate-400">Memuat data siswa...</td></tr>
               ) : filteredStudents.length === 0 ? (
-                <tr><td colSpan={6} className="p-8 text-center text-slate-400">Tidak ada data ditemukan.</td></tr>
+                <tr><td colSpan={4} className="p-8 text-center text-slate-400">Tidak ada data ditemukan.</td></tr>
               ) : filteredStudents.map((student, idx) => {
-                const stats = getStudentStats(student.rfid);
                 return (
                   <tr 
                     key={idx} 
@@ -111,12 +90,6 @@ export default function MasterSiswaPage() {
                     <td className="px-6 py-4 font-mono text-sm text-slate-500">{student.rfid}</td>
                     <td className="px-6 py-4 font-semibold text-[#1e3a5f]">{student.nama}</td>
                     <td className="px-6 py-4 font-medium text-slate-600">{student.kelas}</td>
-                    <td className="px-6 py-4 text-center">
-                      <span className="bg-[#00b4d8]/10 text-[#00b4d8] px-3 py-1 rounded-full font-bold text-sm">
-                        {stats.totalLaundry}x
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-slate-500">{stats.lastTap}</td>
                   </tr>
                 );
               })}
@@ -149,19 +122,7 @@ export default function MasterSiswaPage() {
                 <span className="text-slate-500 text-sm font-medium">RFID UID</span>
                 <span className="font-mono text-sm text-[#1e3a5f] font-bold">{selectedStudent.rfid}</span>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-blue-50 rounded-xl p-4 border border-blue-100 text-center">
-                  <p className="text-xs font-medium text-blue-500 mb-1">Total Laundry</p>
-                  <p className="text-2xl font-bold text-blue-700">{getStudentStats(selectedStudent.rfid).totalLaundry}</p>
-                </div>
-                <div className="bg-amber-50 rounded-xl p-4 border border-amber-100 text-center">
-                  <p className="text-xs font-medium text-amber-500 mb-1">Terakhir Tap</p>
-                  <p className="text-sm font-bold text-amber-700 leading-tight">
-                    {getStudentStats(selectedStudent.rfid).lastTap.split(', ')[0]}<br/>
-                    {getStudentStats(selectedStudent.rfid).lastTap.split(', ')[1]}
-                  </p>
-                </div>
-              </div>
+              
               <button 
                 onClick={() => setSelectedStudent(null)}
                 className="w-full mt-2 py-3 bg-[#1e3a5f] hover:bg-blue-900 text-white rounded-xl font-bold transition-colors shadow-md"
