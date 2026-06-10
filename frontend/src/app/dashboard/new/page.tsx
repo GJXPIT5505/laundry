@@ -27,7 +27,7 @@ export default function NewOrderPage() {
 
   const fetchServices = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:8787/api/services');
+      const res = await fetch('https://backend.gilangjanuar210.workers.dev/api/services');
       if (res.ok) {
         setServices(await res.json());
       } else {
@@ -73,7 +73,7 @@ export default function NewOrderPage() {
 
     setSubmitting(true);
     try {
-      const res = await fetch('http://127.0.0.1:8787/api/orders', {
+      const res = await fetch('https://backend.gilangjanuar210.workers.dev/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

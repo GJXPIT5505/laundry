@@ -26,7 +26,7 @@ export default function AdminDashboard() {
   const fetchOrders = async () => {
     try {
       // In a real app, include Authorization header with JWT token here
-      const res = await fetch('http://127.0.0.1:8787/api/orders', {
+      const res = await fetch('https://backend.gilangjanuar210.workers.dev/api/orders', {
         headers: { 'Authorization': 'Bearer YOUR_MOCK_ADMIN_TOKEN' }
       });
       if (res.ok) {
@@ -48,7 +48,7 @@ export default function AdminDashboard() {
 
   const updateStatus = async (id: number, newStatus: string) => {
     try {
-      const res = await fetch(`http://127.0.0.1:8787/api/orders/${id}/status`, {
+      const res = await fetch(`https://backend.gilangjanuar210.workers.dev/api/orders/${id}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -73,7 +73,7 @@ export default function AdminDashboard() {
     formData.append('file', file);
 
     try {
-      const res = await fetch('http://127.0.0.1:8787/api/upload', {
+      const res = await fetch('https://backend.gilangjanuar210.workers.dev/api/upload', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer YOUR_MOCK_ADMIN_TOKEN' },
         body: formData,

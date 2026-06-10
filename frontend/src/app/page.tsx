@@ -11,7 +11,7 @@ type Service = {
 
 async function getServices(): Promise<Service[]> {
   try {
-    const res = await fetch('http://127.0.0.1:8787/api/services', { cache: 'no-store' });
+    const res = await fetch('https://backend.gilangjanuar210.workers.dev/api/services', { cache: 'no-store' });
     if (!res.ok) throw new Error('Failed to fetch services');
     return res.json();
   } catch (error) {

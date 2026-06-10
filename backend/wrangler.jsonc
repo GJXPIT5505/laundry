@@ -13,7 +13,7 @@
 	"upload_source_maps": true,
 	"compatibility_flags": [
 		"nodejs_compat"
-	]
+	],
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
@@ -29,7 +29,7 @@
 		{
 			"binding": "DB",
 			"database_name": "student-laundry-hub-db",
-			"database_id": "REPLACE_WITH_YOUR_DB_ID",
+			"database_id": "e0639db2-8674-4a49-a9ba-a071dbe4b7f2",
 			"migrations_dir": "drizzle"
 		}
 	],
